@@ -17,6 +17,7 @@ jobs:
           import os
           import json
           import urllib.request
+          import urllib.error
 
           api_key = os.environ["AGENTMAIL_API_KEY"]
           url = "https://api.agentmail.to/v0/inboxes/thankfulproduct663@agentmail.to/messages/send"
@@ -37,6 +38,14 @@ jobs:
               method="POST",
           )
 
-          with urllib.request.urlopen(req) as resp:
-              print(resp.read().decode("utf-8"))
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print("HTTP STATUS:", resp.status)
+                  print("RESPONSE BODY:")
+                  print(resp.read().decode("utf-8"))
+          except urllib.error.HTTPError as e:
+              print("HTTP STATUS:", e.code)
+              print("RESPONSE BODY:")
+              print(e.read().decode("utf-8"))
+              raise
           PY
