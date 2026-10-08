@@ -3,7 +3,7 @@ name: Daily News Mail
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "5 11 * * *"
 
 jobs:
   send-test-mail:
