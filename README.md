@@ -1,6 +1,6 @@
 # daily-news-mail
 
-每天从 GDELT 获取近 24 小时的新闻标题和来源；如果 GDELT 限流或没有结果，则回退到 Google News RSS。随后用 DeepSeek API 生成中文趋势简报，并通过 AgentMail 发到 163 邮箱。
+GitHub Actions 定时启动后，先把简报要求和“搜索新闻”函数交给 DeepSeek。DeepSeek 根据要求提出不同主题的搜索查询；程序执行 Google News RSS 搜索并把结果回传给 DeepSeek，再由 DeepSeek 整理简报，最后通过 AgentMail 发到 163 邮箱。
 
 ## 配置
 
@@ -16,4 +16,4 @@
 - `workflow_dispatch`：在 Actions 页面手动运行。
 - 定时运行：每天 `03:10 UTC`，即北京时间 `11:10`。
 
-简报每条包括事实、背景、重要性、对普通人的影响和后续观察点，并附新闻来源链接。新闻标题和 RSS 可用摘要交给模型，因此简报会标注信息有限的内容，不代表已阅读全文或独立核实。
+DeepSeek API 的函数调用让模型可以请求外部搜索，但实际搜索由仓库中的程序执行。搜索结果包含新闻标题、来源、链接和 RSS 可提供的摘要；简报会标注信息有限的内容，不代表已阅读全文或独立核实。
