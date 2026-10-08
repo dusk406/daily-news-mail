@@ -8,13 +8,13 @@ import urllib.request
 from datetime import datetime, timezone
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
+DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 AGENTMAIL_URL = (
     "https://api.agentmail.to/v0/inboxes/"
     "thankfulproduct663@agentmail.to/messages/send"
 )
 RECIPIENT = "wuque_061@163.com"
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 
 
 def get_json(url, headers=None, timeout=45):
@@ -68,7 +68,7 @@ def fetch_articles():
 
 
 def generate_brief(articles):
-    api_key = os.environ["OPENAI_API_KEY"]
+    api_key = os.environ["DEEPSEEK_API_KEY"]
     now = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M %Z")
     prompt = f"""请根据下方最近24小时的新闻标题和来源，写一份中文《每日趋势简报》。
 时间：{now}
@@ -95,7 +95,7 @@ def generate_brief(articles):
         ],
     }
     data = post_json(
-        OPENAI_URL,
+        DEEPSEEK_URL,
         payload,
         {
             "Authorization": f"Bearer {api_key}",
@@ -104,7 +104,7 @@ def generate_brief(articles):
     )
     text = data["choices"][0]["message"]["content"].strip()
     if not text:
-        raise RuntimeError("OpenAI returned an empty brief.")
+        raise RuntimeError("DeepSeek returned an empty brief.")
     return text
 
 
@@ -117,7 +117,7 @@ def send_email(brief):
         "text": brief,
     }
     try:
-        response = post_json(
+        post_json(
             AGENTMAIL_URL,
             payload,
             {
@@ -135,7 +135,7 @@ def send_email(brief):
 
 
 def main():
-    for secret_name in ("OPENAI_API_KEY", "AGENTMAIL_API_KEY"):
+    for secret_name in ("DEEPSEEK_API_KEY", "AGENTMAIL_API_KEY"):
         if not os.environ.get(secret_name):
             raise RuntimeError(f"Missing required GitHub Actions secret: {secret_name}")
     articles = fetch_articles()
