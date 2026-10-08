@@ -6,7 +6,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
-from html import escape
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
@@ -20,6 +19,17 @@ MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 def get_json(url, headers=None, timeout=45):
     request = urllib.request.Request(url, headers=headers or {})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def post_json(url, payload, headers, timeout=60):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -84,16 +94,14 @@ def generate_brief(articles):
              json.dumps(articles, ensure_ascii=False)},
         ],
     }
-    request = urllib.request.Request(
+    data = post_json(
         OPENAI_URL,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
+        payload,
+        {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        method="POST",
     )
-    data = get_json(request.full_url, headers=request.headers)
     text = data["choices"][0]["message"]["content"].strip()
     if not text:
         raise RuntimeError("OpenAI returned an empty brief.")
@@ -108,19 +116,18 @@ def send_email(brief):
         "subject": f"每日趋势简报｜{date}",
         "text": brief,
     }
-    request = urllib.request.Request(
-        AGENTMAIL_URL,
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            print(f"AgentMail accepted message (HTTP {response.status}).")
-            # Do not print response bodies: they can contain private message metadata.
+        response = post_json(
+            AGENTMAIL_URL,
+            payload,
+            {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=45,
+        )
+        # Do not print response bodies: they can contain private message metadata.
+        print("AgentMail accepted the message.")
     except urllib.error.HTTPError as error:
         # Avoid echoing request headers or secrets into Actions logs.
         print(f"AgentMail request failed (HTTP {error.code}).", file=sys.stderr)
