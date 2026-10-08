@@ -121,9 +121,10 @@ def call_deepseek(messages, use_search_tools=True):
         "temperature": 0.3,
         "messages": messages,
     }
+    payload["thinking"] = {"type": "disabled"}
     if use_search_tools:
         payload["tools"] = [SEARCH_NEWS_TOOL]
-        payload["tool_choice"] = "auto"
+        payload["tool_choice"] = "required"
     return post_json(
         DEEPSEEK_URL,
         payload,
@@ -149,8 +150,14 @@ def generate_brief():
 
     for _ in range(MAX_SEARCH_CALLS + 1):
         response = call_deepseek(messages, use_search_tools=search_count < MAX_SEARCH_CALLS)
-        message = response["choices"][0]["message"]
+        choice = response["choices"][0]
+        message = choice["message"]
         tool_calls = message.get("tool_calls") or []
+        if not tool_calls:
+            print(
+                "DeepSeek did not call search_news "
+                f"(finish_reason={choice.get('finish_reason')}, searches={search_count})."
+            )
         if not tool_calls:
             text = (message.get("content") or "").strip()
             if text and search_count >= 4:
