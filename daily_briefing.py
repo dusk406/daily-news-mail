@@ -134,6 +134,7 @@ def generate_brief():
         {"role": "user", "content": f"请研究今天（当前时间：{now}）的新闻并生成每日趋势简报。"},
     ]
     search_count = 0
+    searched_queries = set()
 
     for _ in range(MAX_SEARCH_CALLS + 1):
         response = call_deepseek(messages, use_search_tools=search_count < MAX_SEARCH_CALLS)
@@ -141,8 +142,18 @@ def generate_brief():
         tool_calls = message.get("tool_calls") or []
         if not tool_calls:
             text = (message.get("content") or "").strip()
-            if text:
+            if text and search_count >= 4:
                 return text
+            if text:
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"You have searched {search_count} distinct queries. "
+                        f"Use search_news for at least {4 - search_count} more distinct topics "
+                        "before writing the final brief."
+                    ),
+                })
+                continue
             raise RuntimeError("DeepSeek returned neither a search request nor a brief.")
 
         messages.append({
@@ -155,8 +166,14 @@ def generate_brief():
             if function.get("name") == "search_news" and search_count < MAX_SEARCH_CALLS:
                 try:
                     arguments = json.loads(function.get("arguments") or "{}")
-                    result = search_news(arguments.get("query", ""))
-                    search_count += 1
+                    query = str(arguments.get("query", "")).strip()
+                    query_key = query.casefold()
+                    if not query_key or query_key in searched_queries:
+                        result = {"error": "Use a non-empty, distinct news query."}
+                    else:
+                        result = search_news(query)
+                        searched_queries.add(query_key)
+                        search_count += 1
                 except Exception as error:
                     # Return a short diagnostic to the model, never request headers or secret values.
                     result = {"error": f"News search failed: {type(error).__name__}"}
@@ -168,8 +185,11 @@ def generate_brief():
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
-    if search_count == 0:
-        raise RuntimeError("DeepSeek did not successfully retrieve any news.")
+    if search_count < 4:
+        raise RuntimeError(
+            f"DeepSeek searched only {search_count} distinct topics; "
+            "at least four are required before generating the brief."
+        )
     messages.append({
         "role": "system",
         "content": "搜索轮次已结束。请仅根据已返回的新闻材料生成最终简报，不要再请求工具。",
