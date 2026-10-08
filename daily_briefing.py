@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,8 +20,24 @@ MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-flash")
 
 def get_json(url, headers=None, timeout=45):
     request = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+    retry_delays = (15, 30, 60)
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504) or attempt == len(retry_delays):
+                raise
+            retry_after = error.headers.get("Retry-After")
+            try:
+                delay = min(120, max(5, int(retry_after))) if retry_after else retry_delays[attempt]
+            except (TypeError, ValueError):
+                delay = retry_delays[attempt]
+            print(
+                f"GDELT returned HTTP {error.code}; retrying in {delay}s "
+                f"(attempt {attempt + 2}/{len(retry_delays) + 1})."
+            )
+            time.sleep(delay)
 
 
 def post_json(url, payload, headers, timeout=60):
@@ -35,58 +52,37 @@ def post_json(url, payload, headers, timeout=60):
 
 
 def fetch_articles():
-    queries = [
-        '"artificial intelligence" OR technology OR software',
-        'economy OR markets OR employment OR education',
-        'China OR geopolitics OR climate OR policy',
-    ]
+    params = {
+        "query": '("artificial intelligence" OR technology OR software OR economy '
+                 'OR markets OR employment OR education OR China OR geopolitics '
+                 'OR climate OR policy)',
+        "mode": "artlist",
+        "format": "json",
+        "maxrecords": "50",
+        "timespan": "24h",
+        "sort": "hybridrel",
+    }
+    url = GDELT_URL + "?" + urllib.parse.urlencode(params)
+    data = get_json(url, headers={"User-Agent": "daily-news-mail/1.0"})
+    articles = data.get("articles") or []
     seen = set()
     cleaned = []
-    failures = []
-
-    for index, query in enumerate(queries, start=1):
-        params = {
-            "query": query,
-            "mode": "artlist",
-            "format": "json",
-            "maxrecords": "50",
-            "timespan": "24h",
-            "sort": "hybridrel",
-        }
-        url = GDELT_URL + "?" + urllib.parse.urlencode(params)
-        try:
-            data = get_json(url, headers={"User-Agent": "daily-news-mail/1.0"})
-            articles = data.get("articles") or []
-        except urllib.error.HTTPError as error:
-            failures.append(f"query {index}: HTTP {error.code}")
+    for article in articles:
+        title = (article.get("title") or "").strip()
+        link = (article.get("url") or "").strip()
+        if not title or not link or link in seen:
             continue
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
-            failures.append(f"query {index}: {type(error).__name__}")
-            continue
-
-        added = 0
-        for article in articles:
-            title = (article.get("title") or "").strip()
-            link = (article.get("url") or "").strip()
-            if not title or not link or link in seen:
-                continue
-            seen.add(link)
-            cleaned.append({
-                "title": title[:400],
-                "url": link,
-                "source": (article.get("domain") or "").strip(),
-                "published": (article.get("seendate") or "").strip(),
-                "language": (article.get("language") or "").strip(),
-            })
-            added += 1
-        print(f"GDELT search {index}: added {added} articles.")
-
+        seen.add(link)
+        cleaned.append({
+            "title": title[:400],
+            "url": link,
+            "source": (article.get("domain") or "").strip(),
+            "published": (article.get("seendate") or "").strip(),
+            "language": (article.get("language") or "").strip(),
+        })
     if not cleaned:
-        if failures:
-            detail = "; ".join(failures)
-            raise RuntimeError(f"All GDELT searches failed ({detail}); refusing to send an empty brief.")
         raise RuntimeError(
-            "GDELT returned no usable articles for the three searches in the last 24 hours; "
+            "GDELT returned no usable articles for the combined search in the last 24 hours; "
             "refusing to send an empty brief."
         )
     return cleaned[:30]
