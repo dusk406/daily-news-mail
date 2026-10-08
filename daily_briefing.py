@@ -76,7 +76,7 @@ def search_news(query):
         published = (item.findtext("pubDate") or "").strip()
         raw_summary = item.findtext("description") or ""
         image_urls = []
-        image_match = re.search(r'<img[^>]+src=["\\']([^"\\']+)', html.unescape(raw_summary), re.I)
+        image_match = re.search(r"""<img[^>]+src=["']([^"']+)""", html.unescape(raw_summary), re.I)
         if image_match:
             image_urls.append(image_match.group(1))
         for element in item.iter():
