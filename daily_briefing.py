@@ -35,35 +35,60 @@ def post_json(url, payload, headers, timeout=60):
 
 
 def fetch_articles():
-    params = {
-        "query": '("artificial intelligence" OR technology OR economy OR markets '
-                 'OR employment OR education OR geopolitics OR China OR climate)',
-        "mode": "ArtList",
-        "format": "json",
-        "maxrecords": "50",
-        "timespan": "24h",
-        "sort": "HybridRel",
-    }
-    url = GDELT_URL + "?" + urllib.parse.urlencode(params)
-    data = get_json(url, headers={"User-Agent": "daily-news-mail/1.0"})
-    articles = data.get("articles") or []
+    queries = [
+        '"artificial intelligence" OR technology OR software',
+        'economy OR markets OR employment OR education',
+        'China OR geopolitics OR climate OR policy',
+    ]
     seen = set()
     cleaned = []
-    for article in articles:
-        title = (article.get("title") or "").strip()
-        link = (article.get("url") or "").strip()
-        if not title or not link or link in seen:
+    failures = []
+
+    for index, query in enumerate(queries, start=1):
+        params = {
+            "query": query,
+            "mode": "artlist",
+            "format": "json",
+            "maxrecords": "50",
+            "timespan": "24h",
+            "sort": "hybridrel",
+        }
+        url = GDELT_URL + "?" + urllib.parse.urlencode(params)
+        try:
+            data = get_json(url, headers={"User-Agent": "daily-news-mail/1.0"})
+            articles = data.get("articles") or []
+        except urllib.error.HTTPError as error:
+            failures.append(f"query {index}: HTTP {error.code}")
             continue
-        seen.add(link)
-        cleaned.append({
-            "title": title[:400],
-            "url": link,
-            "source": (article.get("domain") or "").strip(),
-            "published": (article.get("seendate") or "").strip(),
-            "language": (article.get("language") or "").strip(),
-        })
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+            failures.append(f"query {index}: {type(error).__name__}")
+            continue
+
+        added = 0
+        for article in articles:
+            title = (article.get("title") or "").strip()
+            link = (article.get("url") or "").strip()
+            if not title or not link or link in seen:
+                continue
+            seen.add(link)
+            cleaned.append({
+                "title": title[:400],
+                "url": link,
+                "source": (article.get("domain") or "").strip(),
+                "published": (article.get("seendate") or "").strip(),
+                "language": (article.get("language") or "").strip(),
+            })
+            added += 1
+        print(f"GDELT search {index}: added {added} articles.")
+
     if not cleaned:
-        raise RuntimeError("GDELT returned no usable articles; refusing to send an empty brief.")
+        if failures:
+            detail = "; ".join(failures)
+            raise RuntimeError(f"All GDELT searches failed ({detail}); refusing to send an empty brief.")
+        raise RuntimeError(
+            "GDELT returned no usable articles for the three searches in the last 24 hours; "
+            "refusing to send an empty brief."
+        )
     return cleaned[:30]
 
 
