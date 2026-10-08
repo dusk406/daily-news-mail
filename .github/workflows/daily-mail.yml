@@ -3,49 +3,27 @@ name: Daily News Mail
 on:
   workflow_dispatch:
   schedule:
+    # 03:10 UTC = 11:10 China Standard Time (UTC+8)
     - cron: "10 3 * * *"
 
+permissions:
+  contents: read
+
 jobs:
-  send-test-mail:
+  daily-news-brief:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Send test email via AgentMail
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect news, generate brief, and send email
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AGENTMAIL_API_KEY: ${{ secrets.AGENTMAIL_API_KEY }}
-        run: |
-          python - <<'PY'
-          import os
-          import json
-          import urllib.request
-          import urllib.error
-
-          api_key = os.environ["AGENTMAIL_API_KEY"]
-          url = "https://api.agentmail.to/v0/inboxes/thankfulproduct663@agentmail.to/messages/send"
-
-          payload = {
-              "to": "wuque_061@163.com",
-              "subject": "每日趋势简报｜自动发送测试",
-              "text": "这是一封由 GitHub Actions 通过 AgentMail 自动发送的测试邮件。\n\n如果你收到这封邮件，说明 GitHub Actions → AgentMail → 163 邮箱的发送链路已经打通。"
-          }
-
-          req = urllib.request.Request(
-              url,
-              data=json.dumps(payload).encode("utf-8"),
-              headers={
-                  "Authorization": f"Bearer {api_key}",
-                  "Content-Type": "application/json",
-              },
-              method="POST",
-          )
-
-          try:
-              with urllib.request.urlopen(req) as resp:
-                  print("HTTP STATUS:", resp.status)
-                  print("RESPONSE BODY:")
-                  print(resp.read().decode("utf-8"))
-          except urllib.error.HTTPError as e:
-              print("HTTP STATUS:", e.code)
-              print("RESPONSE BODY:")
-              print(e.read().decode("utf-8"))
-              raise
-          PY
+        run: python daily_briefing.py
