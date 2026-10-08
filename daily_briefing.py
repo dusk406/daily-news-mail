@@ -135,6 +135,9 @@ def send_email(brief):
 
 
 def main():
+    for secret_name in ("OPENAI_API_KEY", "AGENTMAIL_API_KEY"):
+        if not os.environ.get(secret_name):
+            raise RuntimeError(f"Missing required GitHub Actions secret: {secret_name}")
     articles = fetch_articles()
     print(f"Collected {len(articles)} GDELT article records.")
     brief = generate_brief(articles)
